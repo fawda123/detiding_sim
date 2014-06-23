@@ -19,63 +19,74 @@ setwd('M:/docs/SWMP/detiding_sim/')
 
 # functions to use
 source('sim_funs.r')
+tide_cat <- c('Diurnal', 'Semidiurnal', 'Mixed Semidiurnal')
+tide_cat <- factor(tide_cat, levels = tide_cat)
+bio_rng <- round(seq(0, 2, length = 3),2)
+tide_assoc <- round(seq(0, 2, length = 3), 2)
+err_rng_pro <- round(seq(0, 2, length = 3), 2)
+err_rng_obs <- round(seq(0, 2, length = 3), 2)
 
-#eval grd, same as before but no tidal category since using actual tide
-load('eval_grd.RData')
-eval_grd_act <- unique(eval_grd[, !names(eval_grd) %in% 'tide_cat'])
+eval_grd <- expand.grid(tide_cat, bio_rng, tide_assoc, err_rng_pro, 
+  err_rng_obs)
+names(eval_grd) <- c('tide_cat', 'bio_rng', 'tide_assoc', 'err_rng_pro', 
+  'err_rng_obs')
+save(eval_grd, file = 'eval_grd.RData')
 
-# tide to simulate
-site <- 'SFBFM'
-load(paste0('M:/wq_models/SWMP/raw/rproc/tide_preds/', site, '.RData'))
-tide <- get(site)
+wins_days <- seq(2, 6, length = 3)
+wins_hours <- seq(0.25, 0.75, length = 3)
+wins_tides <- seq(0.25, 0.75, length = 3)
+wins_grd <- expand.grid(wins_days, wins_hours, wins_tides)
+names(wins_grd) <- c('jday', 'hour', 'Tide')
 
-# time vector 
-nobs <- 48 * 31 * 3 # 3 months
-vec <- c(as.character(min(tide$DateTimeStamp)), 
-  as.character(tide$DateTimeStamp[nobs]))
+comb_grd <- expand.grid(tide_cat, bio_rng, tide_assoc, err_rng_pro, err_rng_obs,
+  wins_days, wins_hours, wins_tides)
+names(comb_grd) <- c(names(eval_grd), names(wins_grd))
+
+# time vector
+vec <- c('2014-05-01 00:00:00', '2014-05-31 00:00:00')
 vec <- as.POSIXct(vec, format = '%Y-%m-%d %H:%M:%S')
 vec <- seq(vec[1], vec[2], by = 60*30)
 
-# setup parallel, for ddply in interpgrd 
+# setup parallel 
 cl <- makeCluster(8)
 registerDoParallel(cl)
 
 # iterate through evaluation grid to create sim series
 strt <- Sys.time()
-int_grds_tidact <- vector('list', length = nrow(eval_grd_act))
-for(row in 1:nrow(eval_grd_act)){
+res <- foreach(row = 1:nrow(comb_grd)) %dopar% {
  
   # progress
   sink('log.txt')
   cat('Log entry time', as.character(Sys.time()), '\n')
-  cat(row, ' of ', nrow(eval_grd_act), '\n')
+  cat(row, ' of ', nrow(comb_grd), '\n')
   print(Sys.time() - strt)
   sink()
     
   # eval grid to evaluate
-  to_eval <- eval_grd_act[row, ]
+  to_eval <- comb_grd[row, ]
   
   # create simulated time series of DO, tide, etc.
   DO_sim <- with(to_eval, 
     ts_create(
       vec, 
       do.amp = bio_rng, 
-      tide_cat = tide[1:length(vec),], 
+      tide_cat = as.character(tide_cat), 
       tide_assoc = tide_assoc,
-      err_rng_pro = err_rng_pro,
-      err_rng_obs = err_rng_obs
+      err_rng_obs = err_rng_obs,
+      err_rng_pro = err_rng_pro
       )  
     )
 
-  # get interp grid, done in parallel
-  int_grd <- interp_grd(DO_sim, wins = list(2, 0.5, 0.2), parallel = T)
+  wins_in <- with(to_eval, list(jday, hour, Tide))
   
-  # append to results 
-  int_grds_tidact[[row]] <- list(to_eval, DO_sim, int_grd)
+  # get results
+  res_tmp <- wtreg_fun(DO_sim, wins = wins_in, parallel = F)
   
-  # save res as results are appended
-  save(int_grds_tidact, file = 'int_grds_tidact.RData')
-
+  res_tmp
+  
   }
 stopCluster(cl)
-Sys.time() - strt
+
+# save
+prdnrm <- res
+save(prdnrm, file = 'prdnrm.RData')

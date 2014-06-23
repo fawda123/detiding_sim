@@ -16,6 +16,7 @@ library(Metrics)
 library(GGally)
 library(gridExtra)
 library(ggmap)
+library(data.table)
 
 # functions to use
 source('sim_funs.r')

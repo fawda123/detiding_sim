@@ -26,7 +26,7 @@ opts_chunk$set(warning = F, message = F,
 
 Observed DO in estuaries can be described as the summation of DO from biological processes, air-sea gas diffusion, water transport by tidal advection, and error or noise.  
 \begin{equation} \label{eqn:one}
-DO_{obs} = DO_{bio} + DO_{dif} + DO_{adv} + \epsilon
+DO_{obs} = DO_{bio} + DO_{dif} + DO_{adv}
 \end{equation}
 Reliable estimates of ecosystem metabolism are dependent on measures of DO flux that are dominated by biological processes.  Long-term time series of DO measurements may include variation related to both biological and physical processses such that the use of observed data may be insufficient in many examples.  Statistical modelling techniques that quantify variation in DO over time and tidal changes have the potential to isolate biological signals in DO variation to more accurately estimate metabolism.  We used a simulation approach to create an observed DO time series as the summation of diel variation.  The effects of air-sea gas diffusion were not considered in the simulation given that methods for quantifying the contribution are available and not of concern for the analysis.  A weighted regression approach was used to predict the simulated time series and then remove variation related to tidal changes.  The following describes the general approach and results of the analysis.
 
@@ -38,49 +38,48 @@ DO_{bio} = \alpha + \beta\cos\left(2\pi ft + \Phi\right)
 
 where the mean DO $\alpha$ was 8, amplitude $\beta$ was 1, $f$ was 1/48 to repeat on a 24 hour period (30 minute observations, \cref{fig:do_sim}), $t$ was the time series vector and $\Phi$ was the x-axis origin set for sunrise at 630am.  The signal was increasing during hypothetical daylight and decreasing during the night for each 24 hour period.  The signal ranged from 7 to 9 mg L$^{-1}$.
 
-Second, a tidal time series was simulated by adding sine waves with relevant solar and lunar periods (\cref{fig:do_sim}).  Each sine wave was created using \cref{eqn:bio} varying $f$ for each period, e.g., 1/25 for a 12.5 hour principal lunar semi-diurnal wave.  The amplitude of each tidal component was set constant to one meter.  The combined tidal series was the additive time series of all sine waves, scaled to 1 meter and centered  at 4 meters to approximate a shallow water station.  The tidal derivative was taken as the difference between observations for the tidal time series. 
+Noise was added to the biological DO signal to simulate natural variation in DO throughout the time series (\cref{fig:do_sim}).  Total uncertainty was the sum of process and observation uncertainty simulated as random variables from the normal distribution, such that:
+\begin{equation}
+\epsilon _{tot} = \epsilon _{obs} + \int_0^n \epsilon _{pro}
+\end{equation}
+where $\epsilon$ for observation and process uncertainty was simulated as a normally distributed random variable with mean zero and standard deviation varying from zero to an upper limit, described below.  The noise for process uncertainty was estimated as a cumulative sum for time $t$ in 0 to $n$ observations such that the noise at time $t+1$ was equal to the noise at time $t$ plus additional variation drawn from the normal distribution.  This approach created a noise vector that was auto-correlated throughout the time series.  The noise vector for process uncertainty was rescaled to constrain the variation within the bounds for standard deviation defined by the random variable. The total error was added to the biological DO time series and was assumed to represent variation in biological processes as DO time series are inherently variable. 
 
-Third, the tidal time series was added to the biological DO series to simulate DO changes with advection (\cref{fig:do_sim}). Conceptually, this vector represents the rate of change in DO as a function of tidal advection such that:
+Second, a tidal time series was simulated by adding sine waves with relevant solar and lunar periods (\cref{fig:do_sim}).  Each sine wave was created using \cref{eqn:bio} varying $f$ for each period, e.g., 1/25 for a 12.5 hour principal lunar semi-diurnal wave.  The amplitude of each tidal component was set constant to one meter.  The combined tidal series was the additive time series of all sine waves, scaled to 1 meter and centered  at 4 meters to approximate a shallow water station.
+
+The tidal time series was added to the biological DO series to simulate DO changes with advection (\cref{fig:do_sim}). Conceptually, this vector represents the rate of change in DO as a function of tidal advection such that:
 \begin{equation}
 \frac{\delta DO_{adv}}{\delta t} = \frac{\delta DO}{\delta x} \cdot \frac{\delta x}{\delta t}
 \end{equation}
 \begin{equation}
 \frac{\delta x}{\delta t} = k \cdot \frac{\delta H}{\delta t}
 \end{equation}
-where the first derivative of the tidal time series, as change in height over time $\delta H / \delta t$, is multiplied by a constant $k$, to simulate the rate of the horizontal tidal excursion over time, $\delta x / \delta t$,  associated with tidal height changes.  The horizontal excursion is assumed to be associated with a horizontal DO change, $\delta DO / \delta x$, such that the product of the two estimates the DO change at each time step from advection, $DO_{adv}$. In practice, the first derivative of the tidal signal was used to simulate $DO_{adv}$:
+where the first derivative of the tidal time series, as change in height over time $\delta H / \delta t$, is multiplied by a constant $k$, to simulate the rate of the horizontal tidal excursion over time, $\delta x / \delta t$,  associated with tidal height changes.  The horizontal excursion is assumed to be associated with a horizontal DO change, $\delta DO / \delta x$, such that the product of the two estimates the DO change at each time step from advection, $DO_{adv}$. In practice, the simulated tidal signal was used to estimate $DO_{adv}$:
 \begin{equation}
-DO_{adv} \propto \frac{\delta H}{\delta t}
+DO_{adv} \propto H
 \end{equation}
 \begin{equation}
-DO_{adv} = 2\cdot a + a \cdot \frac{\frac{\delta H}{\delta t} - \min\frac{\delta H}{\delta t}}{\max\frac{\delta H}{\delta t} - \min\frac{\delta H}{\delta t}}
+DO_{adv} = 2\cdot a + a \cdot \frac{H- \min H}{\max H - \min H}
 \end{equation}
-where $a$ is chosen as the transformation parameter to standardize change in DO from tidal height change to desired units.  For example, $a = 1$ will convert $\delta H / \delta t$ to the scale of +/- 1 mg L$^{-1}$.  
+where $a$ is chosen as the transformation parameter to standardize change in DO from tidal height change to desired units.  For example, $a = 1$ will convert $H$ to the scale of +/- 1 mg L$^{-1}$.  
 
-Noise was added to the tidal DO signal to simulate uncertainty in the observed DO time series (\cref{fig:do_sim}).  Total uncertainty was the sum of process and observation uncertainty simulated as random variables from the normal distribution, such that:
+The final time series for simulated observed DO was the sum of biological DO and advection DO (\cref{fig:do_sim}).
 \begin{equation}
-\epsilon _{tot} = \epsilon _{obs} + \int_0^n \epsilon _{pro}
-\end{equation}
-where $\epsilon$ for observation and process uncertainty was simulated as a normally distributed random variable with mean zero and standard deviation varying from zero to an upper limit, described below.  The noise for process uncertainty was estimated as a cumulative sum for time $t$ in 0 to $n$ observations such that the noise at time $t+1$ was equal to the noise at time $t$ plus additional variation drawn from the normal distribution.  This approach created a noise vector that was auto-correlated throughout the time series.  The noise vector for process uncertainty was rescaled to constrain the variation within the bounds for standard deviation defined by the random variable.    
-
-The final time series for simulated observed DO was the sum of biological DO, advection DO, and total noise (\cref{fig:do_sim}).
-\begin{equation}
-DO_{obs} = DO_{bio} + DO_{adv} + \epsilon _{tot}
+DO_{obs} = DO_{bio} + DO_{adv}
 \end{equation}
 
-The WRTDS method was then applied to the observed DO time series.  An interpolation grid was obtained for observed DO as a function of the tidal derivative, day, and hour using window widths of four days, 12 hours, and tidal derivative range of 0.4 (1.6 mg L$^{-1}$).  The interpolation grid covered the range of values for the tidal derivative.  Predicted DO Values from the interpolation grid were obtained by matching actual tidal values at each observation to those closest in the grid.  The predicted DO observations were normalized using values from the interpolation grid.  Predicted and normalized values were compared to the observed and biological DO signals as a basis for evaluating ability of the WRTDS method to detide the simulated DO signal.  
+The weighted regression method was then applied to the observed DO time series such that observed DO was modelled as a function of time and tide using a moving window approach.  The weighted regression approach estimated DO values using weights that are specific to each observation.  Weights are based on the product of three weight vectors that consider the relation of all other observations in respect to day, hour, and tidal height.  Predicted values are obtained sequentially for each observation and the remaining observations that are closer in time (either in day and hour of day) and those with similar tidal heights are given higher weights in the regression.  The process is repeated for each observation in the time series. Window widths of eight days, 24 hours, and half the range of tidal height values were used.  Normalized DO values were obtained by using the mean tidal height as the predictor variable throughout the time series.  This detided vector represents the mean response of DO conditional on time and a constant tidal height.  The residuals from the predicted estimate, i.e., the observed values minus the predicted values, were considered to represent random variation in the DO signal from biological processes and were added to the detided time series.  
+The predicted and detided values were compared to the observed and biological DO signals as a basis for evaluating the weighted regression method.
 
 \section{Systematic evaluation of detiding}
 
-A systematic approach was used to evaluate ability of the WRTDS method to detide the DO signal.  Specifically, the weighted regression approach was evaluated using simulated data that varied in the relative amount of error in the measurement, degree of association of the tide with the DO signal, relative strength of the biological signal, and tidal type as diurnal, semidiurnal, and mixed semidiurnal (\cref{fig:sim_ex}).  Three levels were evaluated for each variable: relative noise from 0 to 2 standard deviations for both process and observation uncertainty, DO change from tidal advection ($k$) from 0 to 2 mg L$^-L$, and amplitude of biological DO from 0 to 2 mg L$^{-1}$.  This resulted in 81 combinations for each of three tidal categories, or 243 total simulations. 
-
-The interpolation grids were plotted to qualitatively evaluate the relationship of observed DO with tide over time (\cref{fig:cont_ex}).  Predicted DO Values from the interpolation grid were obtained by matching actual tidal values at each observation to those closest in the grid. The predicted DO observations were normalized using values from the interpolation grid.  Results were evaluated based on correlations between observed and predicted DO and normalized and biological DO (\cref{fig:cor_surf}).  
+A systematic approach was used to evaluate ability of the WRTDS method to detide the DO signal.  Specifically, the weighted regression approach was evaluated using simulated data that varied in the relative amount of error in the measurement, degree of association of the tide with the DO signal, relative strength of the biological signal, and tidal type as diurnal, semidiurnal, and mixed semidiurnal (\cref{fig:sim_ex}).  Three levels were evaluated for each variable: relative noise from 0 to 2 standard deviations for both process and observation uncertainty, DO change from tidal advection ($k$) from 0 to 2 mg L$^-L$, and amplitude of biological DO from 0 to 2 mg L$^{-1}$.  This resulted in 81 combinations for each of three tidal categories, or 243 total simulations.  Results were evaluated based on correlations between observed and predicted DO and normalized and biological DO (\cref{fig:cor_surf}).  
 
 \section{Complex tidal signal}
 
 The above simulations were repeated using a complex tidal signal and a longer time series to further evaluate use of the weighted regression method.  Specifically, the weighted regression method was evaluated for its ability to predict observed DO and normalize by tide given effects of actual tidal variation.  A tidal time series was estimated for six months using observed height data for First Mallard site, San Francisco Bay.  The above simulations were repated using the predicted tidal time series (\cref{fig:do_sim_act,fig:cor_surf_act}).    
 
 \section{Conclusions}
-Results shown in figure \cref{fig:cor_surf} suggest that the weighted regression method provides accurate predictions of observed DO and normalized values are similar to the pure biological DO signal. However, the results depended on the degree of error, tidal association, and biological signal (or amplitude).  The following conclusions are made: 
+The following conclusions are made: 
 \begin{itemize}
 \item Results were not affected by tidal type (i.e., diurnal, etc.)
 \item Increasing biological DO signal improved predicted and normalized results.
@@ -107,14 +106,14 @@ vec <- seq(vec[1], vec[2], by = 60*30)
 DO_sim <- ts_create(
   vec, 
   do.amp = 2, 
-  tide_cat = 'Mixed Semidiurnal', 
-  tide_assoc = 1,
-  err_rng_obs = 0.3, 
-  err_rng_pro = 1, 
+  tide_cat = 'Diurnal', 
+  tide_assoc = 4,
+  err_rng_obs = 2, 
+  err_rng_pro = 2, 
   seeded = T
   )  
 
-levs <- c('DO_bio', 'Tide', 'DO_adv', 'DO_tid', 'e_obs', 'e_pro', 'e_tot',  'DO_obs')
+levs <- c('e_obs', 'e_pro', 'e_tot', 'DO_bio', 'DO_adv', 'DO_obs')
 to.plo <- melt(DO_sim, id.var = c('Day', 'sunrise'),
   measure.var = levs
   )
@@ -128,17 +127,80 @@ p <- ggplot(to.plo, aes(x = Day, y = value, col = sunrise)) +
   theme(legend.position = 'none')
  
 facet_wrap_labeller(p, labels = c(
-  expression(italic(DO [Bio])), 
-  expression(italic(Tide)), 
-  expression(italic(DO [adv])),
-  expression(italic(DO [bio] + DO [adv])), 
   expression(italic(epsilon [obs])),
   expression(italic(epsilon [ pro])),
   expression(italic(epsilon [ obs] + epsilon [ pro])),
-  expression(italic(paste(DO [obs], '=', DO [bio] + DO [adv] + epsilon [tot])))
+  expression(italic(DO [Bio])), 
+  expression(italic(DO [adv])),
+  expression(italic(paste(DO [obs], '=', DO [bio] + DO [adv])))
   ))
 @
 \clearpage
+
+% run simulations using eval_grd
+<<run_sims, eval = F, echo = F>>=
+tide_cat <- c('Diurnal', 'Semidiurnal', 'Mixed Semidiurnal')
+tide_cat <- factor(tide_cat, levels = tide_cat)
+bio_rng <- round(seq(0, 2, length = 3),2)
+tide_assoc <- round(seq(0, 2, length = 3), 2)
+err_rng_pro <- round(seq(0, 2, length = 3), 2)
+err_rng_obs <- round(seq(0, 2, length = 3), 2)
+
+eval_grd <- expand.grid(tide_cat, bio_rng, tide_assoc, err_rng_pro, 
+  err_rng_obs)
+names(eval_grd) <- c('tide_cat', 'bio_rng', 'tide_assoc', 'err_rng_pro', 
+  'err_rng_obs')
+save(eval_grd, file = 'eval_grd.RData')
+
+# time vector
+vec <- c('2014-05-01 00:00:00', '2014-05-31 00:00:00')
+vec <- as.POSIXct(vec, format = '%Y-%m-%d %H:%M:%S')
+vec <- seq(vec[1], vec[2], by = 60*30)
+
+# setup parallel 
+cl <- makeCluster(8)
+registerDoParallel(cl)
+
+# iterate through evaluation grid to create sim series
+strt <- Sys.time()
+res <- vector('list', length = nrow(eval_grd))
+for(row in 1:nrow(eval_grd)){
+ 
+  # progress
+  sink('log.txt')
+  cat('Log entry time', as.character(Sys.time()), '\n')
+  cat(row, ' of ', nrow(eval_grd), '\n')
+  print(Sys.time() - strt)
+  sink()
+    
+  # eval grid to evaluate
+  to_eval <- eval_grd[row, ]
+  
+  # create simulated time series of DO, tide, etc.
+  DO_sim <- with(to_eval, 
+    ts_create(
+      vec, 
+      do.amp = bio_rng, 
+      tide_cat = as.character(tide_cat), 
+      tide_assoc = tide_assoc,
+      err_rng_obs = err_rng_obs,
+      err_rng_pro = err_rng_pro
+      )  
+    )
+
+  # get results
+  res_tmp <- wtreg_fun(DO_sim, wins = list(2, 0.5, NULL), parallel = T)
+  
+  res[[row]] <- res_tmp
+  
+  }
+stopCluster(cl)
+
+# save
+prdnrm <- res
+save(prdnrm, file = 'prdnrm.RData')
+
+@
 
 % plot of representative time series for simulation
 % note that the plot uses data from 'get_prdnrm'  chunk below
@@ -227,211 +289,8 @@ ggplot(to_plo, aes(x = Day, y = DO_obs, group = L1)) +
   facet_grid(bio_rng + err_rng_obs + err_rng_pro ~ tide_cat + tide_assoc, 
     labeller = plot_labeller) 
 @
-% get interp grids for each unique time series, not a figure
-<<eval_grd, echo = F, eval = F>>=
-tide_cat <- c('Diurnal', 'Semidiurnal', 'Mixed Semidiurnal')
-tide_cat <- factor(tide_cat, levels = tide_cat)
-bio_rng <- round(seq(0, 2, length = 3),2)
-tide_assoc <- round(seq(0, 2, length = 3), 2)
-err_rng_obs <- round(seq(0, 2, length = 3), 2)
-err_rng_pro <- round(seq(0, 2, length = 3), 2)
-
-eval_grd <- expand.grid(tide_cat, bio_rng, tide_assoc, err_rng_pro, err_rng_obs)
-names(eval_grd) <- c('tide_cat', 'bio_rng', 'tide_assoc', 'err_rng_pro', 
-  'err_rng_obs')
-
-save(eval_grd, file = 'eval_grd.RData')
-
-# time vector
-vec <- c('2014-05-01 00:00:00', '2014-05-31 00:00:00')
-vec <- as.POSIXct(vec, format = '%Y-%m-%d %H:%M:%S')
-vec <- seq(vec[1], vec[2], by = 60*30)
-
-# setup parallel 
-cl <- makeCluster(8)
-registerDoParallel(cl)
-
-# iterate through evaluation grid to create sim series
-strt <- Sys.time()
-res <- vector('list', length = nrow(eval_grd))
-for(row in 1:nrow(eval_grd)){
- 
-  # progress
-  sink('log.txt')
-  cat('Log entry time', as.character(Sys.time()), '\n')
-  cat(row, ' of ', nrow(eval_grd), '\n')
-  print(Sys.time() - strt)
-  sink()
-    
-  # eval grid to evaluate
-  to_eval <- eval_grd[row, ]
-  
-  # create simulated time series of DO, tide, etc.
-  DO_sim <- with(to_eval, 
-    ts_create(
-      vec, 
-      do.amp = bio_rng, 
-      tide_cat = as.character(tide_cat), 
-      tide_assoc = tide_assoc,
-      err_rng_obs = err_rng_obs,
-      err_rng_pro = err_rng_pro
-      )  
-    )
-
-  # get interp grid
-  int_grd <- interp_grd(DO_sim, wins = list(2, 0.5, 0.2), parallel = T)
-  
-  res[[row]] <- list(to_eval, DO_sim, int_grd)
-  
-  }
-stopCluster(cl)
-
-# save
-int_grds <- res
-save(int_grds, file = 'int_grds.RData')
-@
 \clearpage
 
-% interpolation grid from representatitive examples
-<<cont_ex, fig.height = 9.5, fig.width = 8, echo = F, eval = T, fig.cap = 'Representative examples of interpolation grids for simulated DO time series.  Y-axis values are approximated for standard scale.'>>=
-tide_cat <- c('Diurnal', 'Semidiurnal', 'Mixed Semidiurnal')
-tide_cat <- factor(tide_cat, levels = tide_cat)
-bio_rng <- round(seq(0, 2, length = 3),2)
-tide_assoc <- round(seq(0, 2, length = 3), 2)
-err_rng_pro <- round(seq(0, 2, length = 3), 2)
-err_rng_obs <- round(seq(0, 2, length = 3), 2)
-
-eval_grd <- expand.grid(tide_cat, bio_rng, tide_assoc, err_rng_pro, 
-  err_rng_obs)
-names(eval_grd) <- c('tide_cat', 'bio_rng', 'tide_assoc', 'err_rng_pro', 
-  'err_rng_obs')
-
-# find rows in eval_grd of parms to plot
-sel_vec <- !with(eval_grd,
-  bio_rng %in% 1|
-  tide_assoc %in% 1|
-  err_rng_pro %in% 1|
-  err_rng_obs %in% 1
-  )
-parms <- eval_grd[sel_vec,]
-parms$L1 <- as.numeric(row.names(parms))
-
-load('int_grds.RData')
-to_plo <- lapply(int_grds, function(x) x[[3]])
-to_plo <- to_plo[as.numeric(rownames(parms))]
-names(to_plo) <- rownames(parms)
-
-to_plo <- melt(to_plo, id.var = names(to_plo[[1]]))
-to_plo <- merge(to_plo, parms, by = 'L1', all.x = T)
-
-# get day vector 
-# add decimal time on julian day
-to_plo <- dec_fun(to_plo)
-
-# add column for dec_time starting from one (for plotting)
-to_plo$Day <- with(to_plo, (dec_time + 1) - jday[1])
-
-# rename extremes for facet labs
-labs <- paste('Bio Amp', unique(to_plo$bio_rng))
-to_plo$bio_rng <- factor(to_plo$bio_rng, labels = labs)
-labs <- paste('Assoc', unique(to_plo$tide_assoc))
-to_plo$tide_assoc <- factor(to_plo$tide_assoc, labels = labs)
-labs <- paste('Noise pro', unique(to_plo$err_rng_pro))
-to_plo$err_rng_pro <- factor(to_plo$err_rng_pro, labels = labs)
-labs <- paste('Noise obs', unique(to_plo$err_rng_obs))
-to_plo$err_rng_obs <- factor(to_plo$err_rng_obs, labels = labs)
-
-# setup facet labels
-facet1_names <- list(
-  'Diurnal' = expression(Diurnal), 
-  'Semidiurnal' = expression(Semidi.), 
-  'Mixed Semidiurnal' = expression(Mixed)
-  )
-facet2_names <- list(
-  'Assoc 0' = expression(paste(italic(DO [adv]), ' 0')), 
-  'Assoc 2' = expression(paste(italic(DO [adv]), ' 2'))
-  )
-facet3_names <- list(
-  'Bio Amp 0' = expression(paste(italic(DO [bio]), ' 0')), 
-  'Bio Amp 2' = expression(paste(italic(DO [bio]), ' 2'))
-  )
-facet4_names <- list(
-  'Noise pro 0' = expression(paste(italic(epsilon [pro]), ' 0')), 
-  'Noise pro 2' = expression(paste(italic(epsilon [pro]), ' 2'))
-  )
-facet5_names <- list(
-  'Noise obs 0' = expression(paste(italic(epsilon [obs]), ' 0')), 
-  'Noise obs 2' = expression(paste(italic(epsilon [obs]), ' 2'))
-  )
-plot_labeller <- function(variable,value){
-  if (variable=='tide_cat')
-    return(facet1_names[value])
-  if (variable=='tide_assoc')
-    return(facet2_names[value])
-  if (variable=='bio_rng')
-    return(facet3_names[value])
-  if (variable=='err_rng_pro')
-    return(facet4_names[value])
-  if (variable=='err_rng_obs')
-    return(facet5_names[value])
-  }
-
-# fudge dtide for common y axix
-levs <- round(seq(-0.1, 0.1, length = 10),2)
-to_plo$dTide <- factor(rep(levs, nrow(to_plo)/10), levels = levs, 
-  labels = as.character(levs))
-
-ggplot(to_plo, aes(x = Day, y = dTide, 
-    z = DO_pred, fill = DO_pred)) +
-  geom_tile() + 
-  scale_fill_gradientn(name = expression(paste('DO mg', L^-1)), 
-    colours=c('red', 'lightgreen', 'blue')) +##cm.colors(3)) +
-  scale_x_continuous(expand = c(0,0)) + 
-  scale_y_discrete(expand = c(0,0)) +
-  ylab(expression(paste('~', delta, 'Tide/', delta, 't'))) +
-  facet_grid(bio_rng + err_rng_obs + err_rng_pro ~ tide_cat + tide_assoc, 
-    labeller = plot_labeller) +
-  theme_bw() +
-  theme(axis.text.y = element_text(size = 5),
-    axis.text.x = element_text(size = 8), 
-    legend.position = 'top')
-@
-\clearpage
-
-% get preds, norms from all int grds, no figure
-<<get_prednrm, eval = F, echo = F>>=
-# load interpolation grids
-load('int_grds.RData')
-
-# setup parallel backend
-cl <- makeCluster(8)
-registerDoParallel(cl)
-
-#process
-strt <- Sys.time()
-prdnrm <- foreach(sim = 1:length(int_grds), .packages = 'plyr') %dopar% {
-  
-  # data to proc
-  grd_in <- int_grds[[sim]][[3]]
-  dat_in <- int_grds[[sim]][[2]]  
-  
-  # progress
-  sink('log.txt')
-  cat('Log entry time', as.character(Sys.time()), '\n')
-  cat(sim, ' of ', length(int_grds), '\n')
-  print(Sys.time() - strt)
-  sink()
-  
-  # proc
-  res <- prdnrm_fun(grd_in, dat_in)
-  
-  res
-  
-  }
-stopCluster(cl)
-
-save(prdnrm, file = 'prdnrm.RData')
-@
 % correlation surface for simulation results
 <<cor_surf, fig.height =9.5, fig.width = 7.5, eval = T, echo = F, fig.cap = 'Correlation surfaces for each unique combination of simulation parameters.  The top plots indicate correlations between observed and predicted DO and the bottom plots indicate correlations between biological and normalized DO.'>>=
 ######
@@ -450,9 +309,9 @@ for(i in 1:length(prdnrm)){
 #   cat(i, '\t')
   
   x <- prdnrm[[i]]
-  prd_err <- cor(x$DO_obs + jitt, x$DO_pred + jitt)
+  prd_err <- cor(x$DO_obs + jitt, x$DO_prd + jitt)
 
-  nrm_err <- cor(x$DO_bio + jitt, x$DO_nrm + jitt)
+  nrm_err <- cor(x$DO_bio + jitt, x$DO_dtd + jitt)
   
   errs_all <- rbind(errs_all, data.frame(prd_err, nrm_err))
   
@@ -493,7 +352,7 @@ plot_labeller <- function(variable,value){
 p1 <- ggplot(to_plo, aes(x = factor(err_rng_pro), y = factor(err_rng_obs), 
     z = prd_err, fill = prd_err)) +
   geom_tile() + 
-  facet_grid(tide_cat + tide_assoc ~ bio_rng, scales = 'free', 
+  facet_grid(tide_cat + bio_rng ~ tide_assoc, scales = 'free', 
     labeller = plot_labeller) +
   scale_fill_gradientn(name = 'Obs ~ Prd', colours=cm.colors(3)) +
   scale_x_discrete(expand = c(0,0)) + 
@@ -503,11 +362,10 @@ p1 <- ggplot(to_plo, aes(x = factor(err_rng_pro), y = factor(err_rng_obs),
   theme_bw() +
   theme(legend.position = 'top')
 
-
 p2 <- ggplot(to_plo, aes(x = factor(err_rng_pro), y = factor(err_rng_obs), 
     z = nrm_err, fill = nrm_err)) +
   geom_tile() + 
-  facet_grid(tide_cat + tide_assoc ~ bio_rng, scales = 'free', 
+  facet_grid(tide_cat + bio_rng~ tide_assoc, scales = 'free', 
     labeller = plot_labeller) +
   scale_fill_gradientn(name = 'Bio ~ Nrm', colours=cm.colors(3)) +
   scale_x_discrete(expand = c(0,0)) + 
@@ -522,7 +380,7 @@ grid.arrange(p1, p2, ncol = 2)
 \clearpage
 
 % example of creating simulated time series using actual predicted tide
-<<do_sim_act, eval = T, echo = F, fig.width = 8, fig.height = 7, fig.cap = 'Example of simulated time series using the equations above and actual predicted tides from San Francisco Bay, First Mallard.  Yellow indicates daylight periods.'>>=
+<<do_sim_act, eval = F, echo = F, fig.width = 8, fig.height = 7, fig.cap = 'Example of simulated time series using the equations above and actual predicted tides from San Francisco Bay, First Mallard.  Yellow indicates daylight periods.'>>=
 
 # site for tide
 site <- 'SFBFM'
@@ -671,7 +529,7 @@ stopCluster(cl)
 save(prdnrm_tidact, file = 'prdnrm_tidact.RData')
 @
 % correlation surface for simulation results w/ actual tidal data
-<<cor_surf_act, fig.height =4.5, fig.width = 7.5, eval = T, echo = F, fig.cap = 'Correlation surfaces for each unique combination of simulation parameters.  The top plots indicate correlations between observed and predicted DO and the bottom plots indicate correlations between biological and normalized DO.'>>=
+<<cor_surf_act, fig.height =4.5, fig.width = 7.5, eval = F, echo = F, fig.cap = 'Correlation surfaces for each unique combination of simulation parameters.  The top plots indicate correlations between observed and predicted DO and the bottom plots indicate correlations between biological and normalized DO.'>>=
 ######
 #eval grd, same as before but no tidal category since using actual tide
 load('eval_grd.RData')

@@ -1224,8 +1224,8 @@ dec_fun <- function(dat_in, var_nm = 'DateTimeStamp'){
 #'wins' are the windows for the three wt.vars, values represent halves
 #'all' will return all weights, rather than the product of all three
 wt_fun<-function(ref_in, dat_in,
-  wt_vars = c('jday', 'hour', 'dTide'),
-  wins = list(2, 0.5, 0.2),
+  wt_vars = c('jday', 'hour', 'Tide'),
+  wins = list(2, 0.5, NULL),
   all = F){
   
 #   # for subroutine
@@ -1412,16 +1412,16 @@ filled.contour.hack <- function (x = seq(0, 1, length.out = nrow(z)), y = seq(0,
 # 'dat_in' is data.frame to interpolate, must contain dTide, dec_time, DO_obs, DateTimeStamp
 # 'dtide_div' is number of values to interp for grid
 # 'wins' is list of values for windows to determine weights
-interp_grd <- function(dat_in, dtide_div = 10,
-  wins = list(2, 0.5, 0.2), parallel = F){
+interp_grd <- function(dat_in, tide_div = 10,
+  wins = list(2, 0.5, NULL), parallel = F){
   
   require(plyr)
   
   # assign to local env for ddply
-  dtide_div <- dtide_div
+  tide_div <- tide_div
   
   # setup range of tidal vals to predict for grid
-  dtide.grid<-seq(min(dat_in$dTide), max(dat_in$dTide), length = dtide_div)
+  tide.grid<-seq(min(dat_in$Tide), max(dat_in$Tide), length = tide_div)
 
   interp_out <- vector('list', length = nrow(dat_in))
 
@@ -1434,8 +1434,8 @@ interp_grd <- function(dat_in, dtide_div = 10,
     
       # row for prediction
       ref_in <- row
-      ref_in <- ref_in[rep(1, dtide_div),]
-      ref_in$dTide <- dtide.grid
+      ref_in <- ref_in[rep(1, tide_div),]
+      ref_in$Tide <- tide.grid
       
       # get wts
       ref_wts <- wt_fun(ref_in, dat_in, wins = wins)
@@ -1454,23 +1454,23 @@ interp_grd <- function(dat_in, dtide_div = 10,
           
           # get model
           mod_md <- lm(
-            DO_obs ~ dec_time + dTide + sin(2*pi*dec_time) + cos(2*pi*dec_time),
+            DO_obs ~ dec_time + Tide + sin(2*pi*dec_time) + cos(2*pi*dec_time),
             weights = ref_wts,
             data = dat_in
             )
           
           # get prediction from model
-          dTide <- ref_in$dTide[x]
-          DO_pred <- predict(
+          Tide <- ref_in$Tide[x]
+          DO_prd <- predict(
             mod_md, 
-            newdata = data.frame(dec_time = ref_in$dec_time[x], dTide = dTide)
+            newdata = data.frame(dec_time = ref_in$dec_time[x], Tide = Tide)
             )
           
           # get beta from model
-          beta <- mod_md$coefficients['dTide']
+          beta <- mod_md$coefficients['Tide']
           
           # output
-          data.frame(DO_pred, beta, dTide)
+          data.frame(DO_prd, beta, Tide)
           
           }
         
@@ -1484,9 +1484,9 @@ interp_grd <- function(dat_in, dtide_div = 10,
       })
   
   # convert list vectors to numeic
-  out$DO_pred <- as.numeric(out$DO_pred)
+  out$DO_prd <- as.numeric(out$DO_prd)
   out$beta <- as.numeric(out$beta)
-  out$dTide <- as.numeric(out$dTide)
+  out$Tide <- as.numeric(out$Tide)
   
   return(out)
   
@@ -1499,24 +1499,20 @@ interp_grd <- function(dat_in, dtide_div = 10,
 # 'tide_cat' is either a list of tidal components, 
 # a character string as 'Diurnal', 'Semidiurnal', or 'Mixed Semidiurnal', 
 # or a data.frame of tidal values
-# 'tide_assoc' is value +- range of DO_adv when converting dTide (i.e., amp)
+# 'tide_assoc' is value +- range of DO_adv when converting Tide (i.e., amp)
 # 'err_rng_obs' is sd of obs uncertainty for DO signal
 # 'err_rng_pro' is bounded range +/- or proc unc
 # 'seeded' is logical indicating if a random seed is used for obs/pro error
-# output is data drame with DateTimeStamp, DO_bio, jday, hour, dec_time,
-# sunrise, Tide, dTide, DO_adv, DO_tid, DO_noi, DO_obs
+# output is data drame with DateTimeStamp, jday, hour, dec_time,
+# sunrise, Tide, DO_bio, DO_adv, DO_tid, DO_noi, DO_obs
 ts_create <- function(time_in, do.amp, tide_cat, tide_assoc, err_rng_obs, 
   err_rng_pro, seeded = T){
 
   require(scales)
   
-  # create biological DO time series
-  DO_sim <- DO.bio.fun(time_in, do.amp = do.amp)
-
   # start data.frame for plotting
   DO_sim <- data.frame(
-    DateTimeStamp = time_in, 
-    DO_bio = DO_sim
+    DateTimeStamp = time_in
     )
   
   # add decimal time on julian day
@@ -1550,69 +1546,163 @@ ts_create <- function(time_in, do.amp, tide_cat, tide_assoc, err_rng_obs,
   if(class(tide_cat) == 'data.frame'){
     tide <- tide_cat
     tide$Tide <- rescale(tide$Tide, to = c(4, 5))
-    tide$dTide <- with(tide, c(diff(Tide)[1], diff(Tide)))
     }
   
   # combine with data frame and add dtide/dt
   DO_sim$Tide <- tide$Tide
-  DO_sim$dTide <- tide$dTide
-
-  # add tide
-  DO_sim$DO_adv <- rescale(DO_sim$dTide, to = c(-1*tide_assoc, tide_assoc))
-  DO_sim$DO_tid <- with(DO_sim, DO_bio + DO_adv)
   
-  # add error
+  ##
+  # create biological DO
+  
+  # obs and proc uncertainty
   if(seeded) set.seed(1234)
   DO_sim$e_obs <- rnorm(nrow(DO_sim), 0, err_rng_obs)
   if(seeded) set.seed(4321)
   DO_sim$e_pro <- rescale(cumsum(rnorm(nrow(DO_sim), 0, err_rng_pro)), 
     to = c(-1 * err_rng_pro, err_rng_pro))
-  
   DO_sim$e_tot <- with(DO_sim, e_obs + e_pro)
-  DO_sim$DO_obs <- with(DO_sim, DO_tid + e_tot)
-  
+
+  # add uncertainty to clean DO signal
+  DO_sim$DO_bio <- DO.bio.fun(time_in, do.amp = do.amp)
+  DO_sim$DO_bio <- pmax(0, with(DO_sim, DO_bio + e_tot))
+
+  # add tidal effect
+  DO_sim$DO_adv <- rescale(DO_sim$Tide, to = c(-1*tide_assoc, tide_assoc))
+  DO_sim$DO_obs <- with(DO_sim, DO_bio + DO_adv)
+
   # floor at zero
   DO_sim$DO_obs <- with(DO_sim, pmax(0, DO_obs))
+  
+  # 
   
   return(DO_sim)
   
   }
-  
+
 ######
-# get predicted, normalized values from interp grid and obs data
+# get predicted, normalized values not using interp grid, tide as predictor
+# 'dat_in' is raw data used to create 'grd_in' and used to get predictions
+# 'DO_obs' is string indicating name of col for observed DO values from 'dat_in'
+# output is data frame same as 'dat_in' but includes predicted and norm columns
+wtreg_fun <- function(dat_in, DO_obs = 'DO_obs', wins = list(4, 0.5, NULL),
+  parallel = F, progress = F){
+
+  # get mean tidal height from empirical data
+  mean_tide <- mean(dat_in$Tide)
+
+  #for counter
+  strt <- Sys.time()
+  
+  out <- ddply(dat_in, 
+    .variable = 'DateTimeStamp',
+    .parallel = parallel,
+    .fun = function(row){
+      
+      # row for prediction
+      ref_in <- row
+      ref_in <- ref_in[rep(1, 2),]
+      ref_in$Tide <- c(unique(ref_in$Tide), mean_tide)
+      
+      # progress
+      if(progress){
+        prog <- which(row$DateTimeStamp == dat_in$DateTimeStamp)
+        sink('log.txt')
+        cat('Log entry time', as.character(Sys.time()), '\n')
+        cat(prog, ' of ', nrow(dat_in), '\n')
+        print(Sys.time() - strt)
+        sink()
+        }
+      
+      # get wts
+      ref_wts <- wt_fun(ref_in, dat_in, wins = wins, 
+        wt_vars = c('jday', 'hour', 'Tide'))
+  
+      #OLS wtd model
+      out <- lapply(1:ncol(ref_wts),
+        function(x){
+          
+          # subset data for weights > 0
+          dat_proc <- dat_in
+     
+          # subset weigths > 0, rescale weights average
+          ref_wts <- ref_wts[,x]/mean(ref_wts[,x])
+            
+          # get model
+          mod_md <- lm(
+            DO_obs ~ dec_time + Tide,
+            weights = ref_wts,
+            data = dat_proc
+            )
+        
+          # get prediction from model
+          Tide <- ref_in$Tide[x]
+          DO_prd <- predict(
+            mod_md, 
+            newdata = data.frame(dec_time = ref_in$dec_time[x], Tide = Tide)
+            )
+            
+          # get beta from model
+          beta <- mod_md$coefficients['Tide']
+          
+          # output
+          DO_prd
+          
+          }
+        
+        )
+
+      out <- unlist(out)
+      names(out) <- c('DO_prd', 'DO_nrm')
+      out
+      
+      })
+  
+  out$DateTimeStamp <- NULL
+  out <- cbind(dat_in, out)
+  
+  # DO_est is normalized plus resid
+  out$DO_dtd <- with(out, DO_nrm + DO_obs - DO_prd)
+
+  return(out)
+  
+  }
+
+######
+# get predicted, normalized values from interp grid and obs data, tide as predictor
 # 'grd_in' is interpolation grid in from 'interp_grd' function
 # 'dat_in' is raw data used to create 'grd_in' and used to get predictions
 # 'DO_obs' is string indicating name of col for observed DO values from 'dat_in'
 # output is data frame same as 'dat_in' but includes predicted and norm columns
 prdnrm_fun <- function(grd_in, dat_in, DO_obs = 'DO_obs'){
   
-  require(reshape)
+  require(data.table)
   
   # merge int grd with obs data
-  DO_pred <- merge(grd_in, dat_in[, c('DateTimeStamp', DO_obs, 'dTide')],
+  DO_mrg <- merge(grd_in, dat_in[, c('DateTimeStamp', DO_obs, 'Tide')],
     by = 'DateTimeStamp')
-   
-  # get predicted values from grid using interped tide values closest to actual
-  DO_pred <- ddply(DO_pred,
-   .variables = 'DateTimeStamp',
-   .fun = function(x){
-     ind <- which.min(abs(with(x, dTide.x - dTide.y)))
-     x[ind,]
-   })$DO_pred
-  
-  # get normalized values by averaging int grd
-  # note that this differs from hirsch method for interp
-  # assumes all dtide values are equally likely for a given obs
-  DO_nrm <-ddply(grd_in, 
-   .variables = c('DateTimeStamp'), 
-   .fun = function(x) mean(x$DO_pred)
-   )$V1
-  
+
+  # convert merged data to data table, key is DateTimeStamp
+  DO_tab <- data.table(DO_mrg, key = 'DateTimeStamp')
+
+  # get predicted DO from table
+  DO_prd <- DO_tab[, DO_prd[which.min(abs(Tide.x - Tide.y))], 
+    key = 'DateTimeStamp']
+
+#   # get normalized values by averaging
+#   # note that this differs from hirsch method for interp
+#   # assumes all dtide values are equally likely for a given obs
+#   DO_nrm <- DO_tab[, mean(DO_prd), key = 'DateTimeStamp']
+
+  # get normalized values, predicted tide at mean tidal height for each obs
+  mean_tide <- mean(dat_in$Tide)
+  mean_tide <- unique(DO_tab$Tide.x)[which.min(abs(mean_tide - unique(DO_tab$Tide.x)))]
+  DO_nrm <- DO_tab[, DO_prd[Tide.x == mean_tide], key = 'DateTimeStamp']
+
   # add predicted to 'dat_in'
-  dat_in$DO_pred <- DO_pred
+  dat_in$DO_prd <- DO_prd$V1
    
-  # add normalized to 'dat_in'
-  dat_in$DO_nrm <- DO_nrm  
+  # add normalized to 'dat_in', note that DO_obs is a chr object
+  dat_in$DO_nrm <- DO_nrm$V1 # + dat_in[, DO_obs] - dat_in[, 'DO_prd']  
   
   return(dat_in)
   
