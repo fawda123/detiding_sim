@@ -3,6 +3,7 @@
 \usepackage[colorlinks=true,allcolors=Blue]{hyperref}
 \usepackage{cleveref}
 \usepackage[usenames,dvipsnames]{xcolor}
+\usepackage{pdflscape}
 
 % knitr options
 <<opts, echo = F>>=
@@ -152,6 +153,16 @@ names(eval_grd) <- c('tide_cat', 'bio_rng', 'tide_assoc', 'err_rng_pro',
   'err_rng_obs')
 save(eval_grd, file = 'eval_grd.RData')
 
+wins <- c(1, seq(5, 20, by = 5))
+
+wins_grd <- expand.grid(wins)
+names(wins_grd) <- c('dec_time')
+
+comb_grd <- expand.grid(tide_cat, bio_rng, tide_assoc, err_rng_pro, err_rng_obs,
+  wins)
+names(comb_grd) <- c(names(eval_grd), names(wins_grd))
+save(comb_grd, file = 'comb_grd.RData')
+
 # time vector
 vec <- c('2014-05-01 00:00:00', '2014-05-31 00:00:00')
 vec <- as.POSIXct(vec, format = '%Y-%m-%d %H:%M:%S')
@@ -163,18 +174,17 @@ registerDoParallel(cl)
 
 # iterate through evaluation grid to create sim series
 strt <- Sys.time()
-res <- vector('list', length = nrow(eval_grd))
-for(row in 1:nrow(eval_grd)){
+res <- foreach(row = 1:nrow(comb_grd)) %dopar% {
  
   # progress
   sink('log.txt')
   cat('Log entry time', as.character(Sys.time()), '\n')
-  cat(row, ' of ', nrow(eval_grd), '\n')
+  cat(row, ' of ', nrow(comb_grd), '\n')
   print(Sys.time() - strt)
   sink()
     
   # eval grid to evaluate
-  to_eval <- eval_grd[row, ]
+  to_eval <- comb_grd[row, ]
   
   # create simulated time series of DO, tide, etc.
   DO_sim <- with(to_eval, 
@@ -188,10 +198,12 @@ for(row in 1:nrow(eval_grd)){
       )  
     )
 
-  # get results
-  res_tmp <- wtreg_fun(DO_sim, wins = list(2, 0.5, NULL), parallel = T)
+  win_in <- with(to_eval, dec_time)
   
-  res[[row]] <- res_tmp
+  # get results
+  res_tmp <- wtreg_fun(DO_sim, win = win_in, parallel = F)
+  
+  res_tmp
   
   }
 stopCluster(cl)
@@ -206,17 +218,7 @@ save(prdnrm, file = 'prdnrm.RData')
 % note that the plot uses data from 'get_prdnrm'  chunk below
 <<sim_ex, fig.height = 9.5, fig.width = 8, echo = F, eval = T, fig.cap = 'Representative examples of simulated DO time series.  Black lines are observed DO and red lines are biological DO.'>>=
 
-tide_cat <- c('Diurnal', 'Semidiurnal', 'Mixed Semidiurnal')
-tide_cat <- factor(tide_cat, levels = tide_cat)
-bio_rng <- round(seq(0, 2, length = 3),2)
-tide_assoc <- round(seq(0, 2, length = 3), 2)
-err_rng_pro <- round(seq(0, 2, length = 3), 2)
-err_rng_obs <- round(seq(0, 2, length = 3), 2)
-
-eval_grd <- expand.grid(tide_cat, bio_rng, tide_assoc, err_rng_pro, 
-  err_rng_obs)
-names(eval_grd) <- c('tide_cat', 'bio_rng', 'tide_assoc', 'err_rng_pro', 
-  'err_rng_obs')
+load('eval_grd.RData')
 
 # find rows in eval_grd of parms to plot
 sel_vec <- !with(eval_grd,
@@ -292,33 +294,46 @@ ggplot(to_plo, aes(x = Day, y = DO_obs, group = L1)) +
 \clearpage
 
 % correlation surface for simulation results
-<<cor_surf, fig.height =9.5, fig.width = 7.5, eval = T, echo = F, fig.cap = 'Correlation surfaces for each unique combination of simulation parameters.  The top plots indicate correlations between observed and predicted DO and the bottom plots indicate correlations between biological and normalized DO.'>>=
+\begin{landscape}
+\centering\vspace*{\fill}
+<<cor_surf, fig.height = 6, fig.width = 12, eval = T, echo = F, fig.cap = 'Correlation surfaces for each unique combination of simulation parameters and window widths.  Correlations are based on Pearson coefficients comparing biological and detided DO time series.'>>=
 ######
-# eval_grd
-load('eval_grd.RData')
+# combination grid, used for systematic sims
+load('comb_grd.RData')
 
 # load predicted/normalized data
 load('prdnrm.RData')
+
+# get results from prdnrm corresponding to a given window value in which_wins
+# rownames in which_wins are used to iterate through prdnrm
+names(comb_grd)[names(comb_grd) %in% 'dec_time'] <- 'dec_win'
+
+
+wins <- unique(comb_grd$dec_win)
+
+for(win in wins){
+  
+which_wins <- comb_grd[comb_grd$dec_win == win, ]
 
 # get err comps for pred/obs and norm/bio
 errs_all <- NULL
 
 jitt <- rnorm(nrow(prdnrm[[1]]), 0, 1e-10)
-for(i in 1:length(prdnrm)){
+for(i in as.numeric(rownames(which_wins))){
   
 #   cat(i, '\t')
   
   x <- prdnrm[[i]]
   prd_err <- cor(x$DO_obs + jitt, x$DO_prd + jitt)
 
-  nrm_err <- cor(x$DO_bio + jitt, x$DO_dtd + jitt)
+  dtd_err <- cor(x$DO_bio + jitt, x$DO_dtd + jitt)
   
-  errs_all <- rbind(errs_all, data.frame(prd_err, nrm_err))
+  errs_all <- rbind(errs_all, data.frame(prd_err, dtd_err))
   
   }
 
 # reassign factor labels for bio amp and tidal assoc
-to_plo <- data.frame(eval_grd, errs_all)
+to_plo <- data.frame(which_wins, errs_all)
 labs <- paste('Bio Amp',unique(to_plo$bio_rng))
 to_plo$bio_rng <- factor(to_plo$bio_rng, labels = labs)
 labs <- paste('Assoc',unique(to_plo$tide_assoc))
@@ -349,34 +364,29 @@ plot_labeller <- function(variable,value){
     return(facet3_names[value])
   }
 
-p1 <- ggplot(to_plo, aes(x = factor(err_rng_pro), y = factor(err_rng_obs), 
-    z = prd_err, fill = prd_err)) +
+p <- ggplot(to_plo, aes(x = factor(err_rng_pro), y = factor(err_rng_obs), 
+    z = dtd_err, fill = dtd_err)) +
   geom_tile() + 
   facet_grid(tide_cat + bio_rng ~ tide_assoc, scales = 'free', 
     labeller = plot_labeller) +
-  scale_fill_gradientn(name = 'Obs ~ Prd', colours=cm.colors(3)) +
+  scale_fill_gradientn(limits = c(0.7, 1), name = 'Obs ~ Prd', colours=cm.colors(3)) +
   scale_x_discrete(expand = c(0,0)) + 
   scale_y_discrete(expand = c(0,0)) +
   xlab(expression(italic(epsilon [pro]))) +
   ylab(expression(italic(epsilon [obs]))) +
   theme_bw() +
-  theme(legend.position = 'top')
+  theme(legend.position = 'top') + 
+  ggtitle(paste0('win = ', win))
 
-p2 <- ggplot(to_plo, aes(x = factor(err_rng_pro), y = factor(err_rng_obs), 
-    z = nrm_err, fill = nrm_err)) +
-  geom_tile() + 
-  facet_grid(tide_cat + bio_rng~ tide_assoc, scales = 'free', 
-    labeller = plot_labeller) +
-  scale_fill_gradientn(name = 'Bio ~ Nrm', colours=cm.colors(3)) +
-  scale_x_discrete(expand = c(0,0)) + 
-  scale_y_discrete(expand = c(0,0)) +
-  xlab(expression(italic(epsilon [pro]))) +
-  ylab(expression(italic(epsilon [obs]))) +
-  theme_bw() +
-  theme(legend.position = 'top')
+pl_nm <- paste0('p', which(win == wins))
+assign(pl_nm, p)
+  
+}
 
-grid.arrange(p1, p2, ncol = 2)
+grid.arrange(p1, p2, p3, p4, p5, ncol = 5)
 @
+\vfill
+\end{landscape}
 \clearpage
 
 % example of creating simulated time series using actual predicted tide

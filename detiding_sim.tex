@@ -52,6 +52,7 @@
 \usepackage[colorlinks=true,allcolors=Blue]{hyperref}
 \usepackage{cleveref}
 \usepackage[usenames,dvipsnames]{xcolor}
+\usepackage{pdflscape}
 
 % knitr options
 
@@ -88,7 +89,7 @@ Noise was added to the biological DO signal to simulate natural variation in DO 
 \end{equation}
 where $\epsilon$ for observation and process uncertainty was simulated as a normally distributed random variable with mean zero and standard deviation varying from zero to an upper limit, described below.  The noise for process uncertainty was estimated as a cumulative sum for time $t$ in 0 to $n$ observations such that the noise at time $t+1$ was equal to the noise at time $t$ plus additional variation drawn from the normal distribution.  This approach created a noise vector that was auto-correlated throughout the time series.  The noise vector for process uncertainty was rescaled to constrain the variation within the bounds for standard deviation defined by the random variable. The total error was added to the biological DO time series and was assumed to represent variation in biological processes as DO time series are inherently variable. 
 
-Second, a tidal time series was simulated by adding sine waves with relevant solar and lunar periods (\cref{fig:do_sim}).  Each sine wave was created using \cref{eqn:bio} varying $f$ for each period, e.g., 1/25 for a 12.5 hour principal lunar semi-diurnal wave.  The amplitude of each tidal component was set constant to one meter.  The combined tidal series was the additive time series of all sine waves, scaled to 1 meter and centered  at 4 meters to approximate a shallow water station.  The tidal derivative was taken as the difference between observations for the tidal time series. 
+Second, a tidal time series was simulated by adding sine waves with relevant solar and lunar periods (\cref{fig:do_sim}).  Each sine wave was created using \cref{eqn:bio} varying $f$ for each period, e.g., 1/25 for a 12.5 hour principal lunar semi-diurnal wave.  The amplitude of each tidal component was set constant to one meter.  The combined tidal series was the additive time series of all sine waves, scaled to 1 meter and centered  at 4 meters to approximate a shallow water station.
 
 The tidal time series was added to the biological DO series to simulate DO changes with advection (\cref{fig:do_sim}). Conceptually, this vector represents the rate of change in DO as a function of tidal advection such that:
 \begin{equation}
@@ -176,6 +177,8 @@ Overall, the method should produce accurate predictions and unbiased normalized 
 \clearpage
 
 % correlation surface for simulation results
+\begin{landscape}
+\centering\vspace*{\fill}
 \begin{knitrout}
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[!h]
 
@@ -184,11 +187,13 @@ Overall, the method should produce accurate predictions and unbiased normalized 
 
 }
 
-\caption[Correlation surfaces for each unique combination of simulation parameters]{Correlation surfaces for each unique combination of simulation parameters.  The top plots indicate correlations between observed and predicted DO and the bottom plots indicate correlations between biological and normalized DO.\label{fig:cor_surf}}
+\caption[Correlation surfaces for each unique combination of simulation parameters and window widths]{Correlation surfaces for each unique combination of simulation parameters and window widths.  Correlations are based on Pearson coefficients comparing biological and detided DO time series.\label{fig:cor_surf}}
 \end{figure}
 
 
 \end{knitrout}
+\vfill
+\end{landscape}
 \clearpage
 
 % example of creating simulated time series using actual predicted tide
