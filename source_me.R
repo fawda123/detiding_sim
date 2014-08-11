@@ -36,8 +36,8 @@ save(eval_grd, file = 'eval_grd.RData')
 
 # grid of regression windows to evaluate
 dy_wins <- c(1, 3, 8)
-hr_wins <- c(3, 9, 24)
-td_wins <- c(0.25, 1, 2)
+hr_wins <- c(6, 12, 24)
+td_wins <- c(0.25, 0.5, 1)
 wins_grd <- expand.grid(dy_wins, hr_wins, td_wins)
 names(wins_grd) <- c('dec_time', 'hour', 'Tide')
 save(wins_grd, file = 'wins_grd.RData')
@@ -90,7 +90,7 @@ foreach(row = 1:nrow(comb_grd)) %dopar% {
   res_tmp <- wtreg_fun(DO_sim, wins = win_in, parallel = F)
   
   # save and delete from workspace
-  nm <- paste0('prdrm_', row)
+  nm <- paste0('prdnrm_', row)
   assign(nm, res_tmp)
   
   save(list = nm, file = paste0('prdnrm/', nm, '.RData'))

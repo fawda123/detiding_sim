@@ -58,7 +58,7 @@ shinyServer(function(input, output) {
       facet_wrap(~ variable, scales = 'free_y', ncol = 1) + 
       theme_bw() +
       ylab(ylab)
-
+b
 
     p1 <- facet_wrap_labeller(p1, labels = c(
       expression(italic(DO [bio])),

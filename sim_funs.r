@@ -573,27 +573,25 @@ dec_fun <- function(dat_in, var_nm = 'DateTimeStamp'){
 
 
 ######
-# function for getting regression weights
+#function for getting regression weights
 # note that this subsets the input data frame for faster wt selection
 # subset is by limiting window for product of weights (dec_time)
 # subsetted weights are recombined to equal vector of length = nrow(dat_in)
-# input weights are whole window, halved within function, dec_time in days and tide height
-# default window for tide height is whole range (value as 1) 
 #'wt_vars' is name of three variables to weight
 #'ref_in' is row of dat.in that is used as reference
 #'dat_in' is data to get weights from
-#'wins' are the windows for the two wt.vars
+#'wins' are the windows for the three wt.vars, values represent halves
 #'all' will return all weights, rather than the product of all three
 #'slice' is logical for subsetting 'dat_in' for faster wt selection
 #'subs_only' is logical for returning only wt vectors that are non-zero
 wt_fun <- function(ref_in, dat_in,
-  wt_vars = c('dec_time', 'Tide'),
-  wins = list(10, 1),
+  wt_vars = c('dec_time', 'hour', 'Tide'),
+  wins = list(4, 12, NULL),
   all = F, 
   slice = T, 
   subs_only = F){
   
-  # sanity check for wt_vars
+  # sanity check
   if(sum(wt_vars %in% names(dat_in)) != length(wt_vars))
     stop('Weighting variables must be named in "dat_in"')
   
@@ -604,7 +602,7 @@ wt_fun <- function(ref_in, dat_in,
   
   # default window width for third variable is half its range
   if(is.null(wins[[3]])) wins_3 <- diff(range(dat_in[, wt_vars[3]]))/2
-
+  
   # weighting tri-cube function
   # mirror extends weighting function if vector repeats, e.g. monthly
   # 'dat_cal' is observation for weight assignment
@@ -632,7 +630,6 @@ wt_fun <- function(ref_in, dat_in,
     # get wts within window, otherwise zero
     win_out <- dist_val > win
     dist_val <- (1 - (dist_val/win)^3)^3
-#     dist_val[!win_out] <- 1
     dist_val[win_out] <- 0
       
     return(dist_val)
@@ -642,6 +639,7 @@ wt_fun <- function(ref_in, dat_in,
   #reference (starting) data
   ref_1 <- as.numeric(ref_in[, wt_vars[1]])
   ref_2 <- as.numeric(ref_in[, wt_vars[2]])
+  ref_3 <- as.numeric(ref_in[, wt_vars[3]])
 
   ##
   # subset 'dat_in' by max window size for faster calc
@@ -660,25 +658,28 @@ wt_fun <- function(ref_in, dat_in,
   # weights for each observation in relation to reference
   # see comments for 'wt_fun_sub' for 'scl_val' argument
   
-  # dec_time
+  # jday
   wts_1 <- wt_fun_sub(as.numeric(dat_sub[, wt_vars[1]]), 
     ref = ref_1, win = wins_1, mirr = F) 
-  # tide
+  # hour
   wts_2 <- wt_fun_sub(as.numeric(dat_sub[, wt_vars[2]]), 
-    ref = ref_2, win = wins_2, mirr = F)
-  
+    ref = ref_2, win = wins_2, mirr = T, scl_val = 24)
+  # tide
+  wts_3 <- wt_fun_sub(as.numeric(dat_sub[, wt_vars[3]]), 
+    ref = ref_3, win = wins_3, mirr = F)
   # all as product 
-  out <- sapply(1:nrow(ref_in), function(x) wts_1[, x] * wts_2[, x])
+  out <- sapply(1:nrow(ref_in), function(x) wts_1[, x] * wts_2[, x] * wts_3[, x])
   
   gr_zero <- colSums(out > 0)
   #cat('   Number of weights greater than zero =',gr.zero,'\n')
   
-  # extend window widths of weight vector if less than 50
-  while(any(gr_zero < 50)){
+  # extend window widths of weight vector is less than 100
+  while(any(gr_zero < 100)){
     
     # increase window size by 10%
     wins_1 <- 1.1 * wins_1
     wins_2 <- 1.1 * wins_2
+    wins_3 <- 1.1 * wins_3 
     
     # subset again
     dec_sub <- with(dat_in, 
@@ -691,10 +692,12 @@ wt_fun <- function(ref_in, dat_in,
     wts_1 <- wt_fun_sub(as.numeric(dat_sub[, wt_vars[1]]), 
       ref = ref_1, win = wins_1, mirr = F)
     wts_2 <- wt_fun_sub(as.numeric(dat_sub[, wt_vars[2]]), 
-      ref = ref_2, win = wins_2, mirr = F)
+      ref = ref_2, win = wins_2, mirr = T, scl_val = 24)
+    wts_3 <- wt_fun_sub(as.numeric(dat_sub[, wt_vars[3]]), 
+      ref = ref_3, win = wins_3, mirr = F)
     
     out <- sapply(1:nrow(ref_in), 
-      function(x) wts_1[, x] * wts_2[, x])
+      function(x) wts_1[, x] * wts_2[, x] * wts_3[, x])
     
     gr_zero <- colSums(out > 0)
     
@@ -725,20 +728,18 @@ wt_fun <- function(ref_in, dat_in,
     }
   wts_1 <- empty_fill(wts_1)
   wts_2 <- empty_fill(wts_2)
+  wts_3 <- empty_fill(wts_3)  
   out <- empty_fill(out)
-  
-  # rescale final output to 0 -- 1
-  out <- out/max(out, na.rm = T)
-  
+
   #return all weights if T
   if(all){
     out <- data.frame(dat_in$DateTimeStamp, 
-      wts_1, wts_2, out)
+      wts_1, wts_2, wts_3, out)
     names(out) <- c('DateTimeStamp', wt_vars, 'final')
     return(out)
     }
   
-  #final
+  #final weights are product of all three
   out
   
   }
