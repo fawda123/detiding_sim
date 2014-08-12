@@ -1,5 +1,5 @@
 load('comb_grd.RData')
-source('sim_funs.R')
+source('sim_funs.r')
 
 require(ggplot2)
 require(scales)
@@ -29,8 +29,8 @@ shinyServer(function(input, output) {
                     tide_cat %in% tide_in &
                     bio_rng %in% bio_in &
                     tide_assoc %in% assoc_in &
-                    err_rng_obs %in% eobs_in &
                     err_rng_pro %in% epro_in &
+                    err_rng_obs %in% eobs_in &
                     dec_time %in% dectm &
                     hour %in% hr &
                     Tide %in% Td
@@ -51,14 +51,13 @@ shinyServer(function(input, output) {
     to.plo$variable <- factor(to.plo$variable, levels = levs)
    
     # create plots
-    ylab<-expression(paste('DO (mg ',L^-1,')'))
+    ylab <- expression(paste('DO (mg ',L^-1,')'))
     
     p1 <- ggplot(to.plo, aes(x = Day, y = value)) +
       geom_line(size = 1.1, alpha =0.8, colour = 'darkgreen') +
       facet_wrap(~ variable, scales = 'free_y', ncol = 1) + 
       theme_bw() +
       ylab(ylab)
-b
 
     p1 <- facet_wrap_labeller(p1, labels = c(
       expression(italic(DO [bio])),

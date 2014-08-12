@@ -36,11 +36,11 @@ shinyUI(pageWithSidebar(
                 selected = 1),
     selectInput(inputId = "hr_in",
                 label = "Hourly:",
-                choices = c(3, 9, 24),
-                selected = 3),
+                choices = c(6, 12, 24),
+                selected = 6),
     selectInput(inputId = "Td_in",
                 label = "Tidal proportion:",
-                choices = c(0.25, 1, 2),
+                choices = c(0.25, 0.50, 1),
                 selected = 0.25)
   ),
   

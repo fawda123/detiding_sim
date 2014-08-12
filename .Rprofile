@@ -17,6 +17,7 @@ library(GGally)
 library(gridExtra)
 library(ggmap)
 library(data.table)
+library(shiny)
 
 # functions to use
 source('sim_funs.r')
