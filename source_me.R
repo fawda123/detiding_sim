@@ -99,3 +99,52 @@ foreach(row = 1:nrow(comb_grd)) %dopar% {
   
   }
 stopCluster(cl)
+
+######
+# summary data
+
+load('comb_grd.RData')
+
+cases <- dir(paste0('prdnrm'))
+
+# summarize results from prdnrm
+# jitter to account for exact corrs
+jitt <- rnorm(1441, 0, 1e-10)
+perf <- llply(
+  as.list(cases), 
+  .progress = 'tk', 
+  .fun = function(x){
+    
+    # load data, assign to obj
+    load(paste0('prdnrm/', x))
+    dat <- get(gsub('.RData', '', x))
+    rm(list = gsub('.RData', '', x))
+    
+    # correlations and errors of normalized and bio
+    with(dat,{
+      
+      dtd_cor <<- cor(DO_nrm + jitt, DO_bio + jitt)
+      dtd_err <<- rmse(DO_nrm + jitt, DO_bio + jitt)
+      
+      })
+    
+    
+    # output, includes index of simulation
+    out <- data.frame(cor = dtd_cor, err = dtd_err, 
+      uni_sim = as.numeric(gsub('prdnrm_|.RData', '', x))
+      )
+    
+    out
+    
+    }
+  )
+perf <- do.call('rbind', perf)
+perf <- perf[order(perf$uni_sim), ]
+
+# combine, make appropriate column names
+# note that perf must be ordered correctly, this is lazy
+perf <- cbind(comb_grd, perf)
+
+# save
+mod_perf <- perf
+save(mod_perf, file = 'mod_perf.RData')

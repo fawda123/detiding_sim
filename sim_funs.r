@@ -1,268 +1,3 @@
-#funcion that splits dataset into 24hr days based on sunrise
-#merge with original data
-met.day.fun<-function(dat.in, stat.in, 
-  meta.path = 'M:/wq_models/SWMP/sampling_stations.csv'
-  ){
-
-  require(StreamMetabolism)  #for sunrise.set function
-  
-  if(!exists('dat.meta')) 
-    dat.meta<-read.csv(meta.path,header=T)
-  
-  stat.meta<-toupper(paste0(stat.in,'WQ'))
-  stat.meta<-dat.meta[grep(stat.meta,toupper(dat.meta$Station.Code)),]
-  
-  # all times are standard - no DST!
-  gmt.tab<-data.frame(
-    gmt.off=c(-4,-5,-6,-8,-9),
-    tz=c('America/Virgin', 'America/Jamaica', 'America/Regina',
-      'Pacific/Pitcairn', 'Pacific/Gambier'),
-    stringsAsFactors=F
-    )
-  
-  #get sunrise/sunset times using sunrise.set function from StreamMetabolism
-  lat<-stat.meta$Latitude
-  long<--1*stat.meta$Longitude
-  GMT.Offset<-stat.meta$GMT.Offset
-  tz<-gmt.tab[gmt.tab$gmt.off==GMT.Offset,'tz']
-  start.day<-format(dat.in$DateTimeStamp[which.min(dat.in$DateTimeStamp)]-(60*60*24),format='%Y/%m/%d')
-  tot.days<-1+length(unique(as.Date(dat.in$DateTimeStamp)))
-  
-  #ss.dat is matrix of sunrise/set times for each days  within period of obs
-  ss.dat<-suppressWarnings(sunrise.set(lat,long,start.day,tz,tot.days))
-  
-  #remove duplicates, sometimes sunrise.set screws up
-  ss.dat<-ss.dat[!duplicated(strftime(ss.dat[,1],format='%Y-%m_%d')),]
-  ss.dat<-data.frame(
-    ss.dat,
-    met.date=as.Date(ss.dat$sunrise,tz=tz)
-    )
-  ss.dat<-melt(ss.dat,id.vars='met.date')
-  if(!"POSIXct" %in% class(ss.dat$value))
-    ss.dat$value<-as.POSIXct(ss.dat$value, origin='1970-01-01',tz=tz)
-  ss.dat<-ss.dat[order(ss.dat$value),]
-  ss.dat$day.hrs<-unlist(lapply(
-    split(ss.dat,ss.dat$met.date),
-    function(x) rep(as.numeric(x[2,'value']-x[1,'value']),2) 
-    ))
-  
-  #matches is vector of row numbers indicating starting value that each
-  #unique DateTimeStamp is within in ss.dat
-  #output is meteorological day matches appended to dat.in
-  matches<-findInterval(dat.in$DateTimeStamp,ss.dat$value)
-  data.frame(dat.in,ss.dat[matches,])
-      
-  }
-
-#calculates oxygen mass transfer coefficient, from Thiebault et al. 2008
-#output from this can be used  to get volumetric rearation coefficient
-#input is water temp, salinity, air temp, wind speed, barometric press, height of anemometer
-f_calcKL<-function(Temp,Sal,ATemp,WSpd,BP,Height=10){
-
-  require(oce) #for swSigmaT
-  
-  #celsius to kelvin conversion
-  CtoK<-function(val) val+273.15 
-  sig.fun<-Vectorize(swSigmaT)
-  
-  to.vect<-function(Temp,Sal,ATemp,WSpd,BP,Height=10){
-    
-    Patm<-BP*100; # convert from millibars to Pascals
-    zo<-1e-5; # assumed surface roughness length (m) for smooth water surface
-    U10<-WSpd*log(10/zo)/log(Height/zo)
-    TempK<-CtoK(Temp)
-    ATempK<-CtoK(ATemp)
-    sigT<-sig.fun(Sal,Temp,10) # set for 10 decibars = 1000mbar = 1 bar = 1atm
-    rho_w<-1000+sigT #density of SW (kg m-3)
-    Upw<-1.002e-3*10^((1.1709*(20-Temp)-(1.827*10^-3*(Temp-20)^2))/(Temp+89.93)) #dynamic viscosity of pure water (Sal=0);
-    Uw<-Upw*(1+(5.185e-5*Temp+1.0675e-4)*(rho_w*Sal/1806.55)^0.5+(3.3e-5*Temp+2.591e-3)*(rho_w*Sal/1806.55))  # dynamic viscosity of SW
-    Vw<-Uw/rho_w  #kinematic viscosity
-    Ew<-6.112*exp(17.65*ATemp/(243.12+ATemp))  # water vapor pressure (hectoPascals)
-    Pv<-Ew*100 # Water vapor pressure in Pascals
-    Rd<-287.05  # gas constant for dry air ( kg-1 K-1)
-    Rv<-461.495  # gas constant for water vapor ( kg-1 K-1)
-    rho_a<-(Patm-Pv)/(Rd*ATempK) +Pv/(Rv*TempK)
-    kB<-1.3806503e-23 # Boltzman constant (m2 kg s-2 K-1)
-    Ro<-1.72e-10     #radius of the O2 molecule (m)
-    Dw<-kB*TempK/(4*pi*Uw*Ro)  #diffusivity of O2 in water 
-    KL<-0.24*170.6*(Dw/Vw)^0.5*(rho_a/rho_w)^0.5*U10^1.81  #mass xfer coef (m d-1)
-   
-    return(KL)
-    
-    }
-  
-  out.fun<-Vectorize(to.vect)
-  
-  out.fun(Temp,Sal,ATemp,WSpd,BP,Height=10)
-  
-  }
-
-######
-# NEM function, uses all functions above
-# estimates daily integrated rates, gross production, total respiraiton
-# 'dat.in' input is station data frame 
-# 'stat' is character string for station, five letters
-# 'depth.val' is value for station depth if needed to add manually
-# 'meta.path' is path of file with lat/long and GMT offset for station to evaluate, passed to 'met.day.fun'
-# 'bott.stat' is logical indicating if station is below pycnocline, default to surface (T) accounts for air-sea exchange
-nem.fun<-function(dat.in, stat, depth.val = NULL, 
-  meta.path = NULL, bott.stat = F){
-  
-  ##dependent packages
-  require(reshape) #data reshape
-  require(wq) #for oxySol function
-  require(oce) #for swSigma function
-
-  ##begin calculations
-
-  cat(stat,'\n')
-  flush.console()
-  strt<-Sys.time()
-  
-  #columns to be removed prior to processing
-  to.rem<-c('flag')
-  dat.in<-dat.in[,!names(dat.in) %in% to.rem]
-  
-  #convert DO from mg/L to mmol/m3
-  dat.in$DO<-dat.in$DO_mgl/32*1000
-  
-  # get change in DO per hour, as mmol m^-3 hr^-1
-  # scaled to time interval to equal hourly rates
-  # otherwise, mmol m^-3 0.5hr^-1
-  dDO_scl <- as.numeric(diff(dat.in$DateTimeStamp)/60)
-  dDO<-diff(dat.in$DO)/dDO_scl
-  
-  #take diff of each column, divide by 2, add original value
-  DateTimeStamp<-diff(dat.in$DateTimeStamp)/2 + dat.in$DateTimeStamp[-c(nrow(dat.in))]
-  dat.in<-apply(
-    dat.in[,2:ncol(dat.in)],
-    2,
-    function(x) diff(x)/2 + x[1:(length(x) -1)]
-    )
-  dat.in<-data.frame(DateTimeStamp,dat.in)
-  DO <- dat.in$DO
-  
-  ##
-  # replace missing wx values with climatological means
-  # only ATemp, WSpd, and BP
-  
-  # monthly and hourly averages
-  months <- format(dat.in$DateTimeStamp, '%m')
-  hours <- format(dat.in$DateTimeStamp, '%H')
-  clim_means <- ddply(data.frame(dat.in, months, hours),
-    .variables=c('months', 'hours'),
-    .fun = function(x){
-      data.frame(
-        ATemp = mean(x$ATemp, na.rm = T),
-        WSpd = mean(x$WSpd, na.rm = T), 
-        BP = mean(x$BP, na.rm = T)
-      )   
-    }
-  )
-  clim_means <- merge(
-    data.frame(DateTimeStamp = dat.in$DateTimeStamp, months,hours),
-    clim_means, by = c('months','hours'),
-    all.x = T
-  )
-  clim_means <- clim_means[order(clim_means$DateTimeStamp),]
-
-  # DateTimeStamp order in dat.in must be ascending to match
-  if(is.unsorted(dat.in$DateTimeStamp))
-    stop('DateTimeStamp is unsorted')
-  
-  # reassign empty values to means, objects are removed later
-  ATemp_mix <- dat.in$ATemp
-  WSpd_mix <- dat.in$WSpd
-  BP_mix <- dat.in$BP
-  ATemp_mix[is.na(ATemp_mix)] <- clim_means$ATemp[is.na(ATemp_mix)]
-  WSpd_mix[is.na(WSpd_mix)] <- clim_means$WSpd[is.na(WSpd_mix)]
-  BP_mix[is.na(BP_mix)] <- clim_means$BP[is.na(BP_mix)]
-
-  ##
-  # get sigma_t estimates
-  SigT<-with(dat.in,swSigmaT(Sal,Temp,mean(dat.in$BP/100,na.rm=T)))
-  
-  #DOsat is DO at saturation given temp (C), salinity (st. unit), and press (atm)
-  #DOsat converted to mmol/m3
-  #used to get loss of O2 from diffusion
-  DOsat<-with(dat.in,DO_mgl/(oxySol(Temp*(1000+SigT)/1000,Sal)))
-  
-  #station depth, defaults to mean depth value plus 0.5 in case not on bottom
-  #uses 'depth.val' if provided
-  if(is.null(depth.val))
-    H<-rep(0.5+mean(pmax(1,dat.in$Depth),na.rm=T),nrow(dat.in))
-  else H<-rep(depth.val,nrow(dat.in))
-  
-  #use met.day.fun to add columns indicating light/day, date, and hours of sunlight
-  if(is.null(meta.path)) dat.in <- met.day.fun(dat.in, stat)
-  else dat.in <- met.day.fun(dat.in, stat, meta.path)
-  
-  #get air sea gas-exchange using wx data with climate means
-  KL<-with(dat.in,f_calcKL(Temp,Sal,ATemp_mix,WSpd_mix,BP_mix))
-  rm(list = c('ATemp_mix', 'WSpd_mix', 'BP_mix'))
-  
-  #get volumetric reaeration coefficient from KL
-  Ka<-KL/24/H
-  
-  #get exchange at air water interface
-  D=Ka*(DO/DOsat-DO)
-  
-  #combine all data for processing
-  proc.dat<-dat.in[,!names(dat.in) %in% c('DateTimeStamp','cDepth','Wdir',
-    'SDWDir','ChlFluor','Turb','pH','RH','DO_mgl','DO_pct','SpCond','TotPrcp',
-    'CumPrcp','TotSoRad','Depth')]
-  proc.dat<-data.frame(proc.dat,DOsat,dDO,SigT,H,D)
-
-  #get daily/nightly flux estimates for Pg, Rt, NEM estimates
-  out<-lapply(
-    split(proc.dat,proc.dat$met.date),
-    function(x){
-      
-      #filter for minimum no. of records 
-      if(length(with(x[x$variable=='sunrise',],na.omit(dDO))) < 3 |
-         length(with(x[x$variable=='sunset',],na.omit(dDO))) < 3 ){
-        DOF_d<-NA; D_d<-NA; DOF_n<-NA; D_n<-NA
-        }
-      
-      else{
-        #day
-        DOF_d<-mean(with(x[x$variable=='sunrise',],dDO*H),na.rm=T)
-        D_d<-mean(with(x[x$variable=='sunrise',],D),na.rm=T)
-        
-        #night
-        DOF_n<-mean(with(x[x$variable=='sunset',],dDO*H),na.rm=T)
-        D_n<-mean(with(x[x$variable=='sunset',],D),na.rm=T)
-        }
-      
-      #metabolism
-      #account for air-sea exchange if surface station
-      #else do not
-      if(!bott.stat){
-        Pg<-((DOF_d-D_d) - (DOF_n-D_n))*unique(x$day.hrs)
-        Rt<-(DOF_n-D_n)*24
-      } else {
-        Pg<-(DOF_d - DOF_n)*unique(x$day.hrs)
-        Rt<-DOF_n*24
-        }
-      NEM<-Pg+Rt
-      Pg_vol<-Pg/mean(x$H,na.rm=T)
-      Rt_vol<-Rt/mean(x$H,na.rm=T)
-      
-      #dep vars to take mean
-      var.out<-x[!names(x) %in% c('variable','value','met.date',
-        'day.hrs')] 
-      var.out<-data.frame(rbind(apply(var.out,2,function(x) mean(x,na.rm=T))))
-      data.frame(Station=stat,Date=unique(x$met.date),var.out,DOF_d,D_d,DOF_n,D_n,Pg,Rt,NEM,
-        Pg_vol,Rt_vol,numrecs=length(na.omit(x$dDO)))
-      
-      }
-    )
-  out<-do.call('rbind',out)
-  
-  return(out)
-  
-  }
-
 ######
 #gets station name, first site then station, separated by comma
 #input is five character string for site uppe case, e.g., 'ACEBB'
@@ -286,7 +21,6 @@ stat.name.fun<-function(stat){
 #'do.mean' is used to change intercept
 #'do.amp' changes amplitude
 #'freq' changes period, this value is set to the number of observations within a period
-
 DO.bio.fun<-function(time.in,sunrise='06:30:00',do.mean=8,do.amp=1,freq=48){
  
   # time.step per hour
@@ -343,7 +77,7 @@ tide.fun <- function(time.in, waves.in, scl.up = 4, all = F){
   
   # add each component, center/scale at zero, 
   # change range to 1m, shift up to some arbitrary mean height
-  tide <- scl.up + rescale(scale(rowSums(tide)))
+  tide <- scl.up + scales::rescale(scale(rowSums(tide)))
   
   # combine with data frame and add dtide/dt
   dTide <- c(diff(tide)[1], diff(tide))        
@@ -389,42 +123,6 @@ rmse.fun<-function(resid){
   out<-sqrt(mean(resid^2,na.rm=T))
     
   return(out) 
-  
-  }
-
-######
-#gets first derivative of predicted values of tidal model
-#'mod.in' is model of class 'tidem' from tidem function
-#'constituents' is tidal component for estimating derivative
-#note this is currently setup for obs at 30 minute intervals - continuous and no breaks
-tidem.deriv.fun<-function(mod.in,constituents){
-  
-  if(length(constituents)>1) stop('Only one tidal component allowed')
-  
-  atts<-attr(mod.in,'data')
-  ind<-which(atts$name==constituents)
-    
-  a.val<-atts[['amplitude']][ind]  
-  f.val<-1/atts[['freq']][ind]/24
-  
-  int.val<-atts$model$coefficients['(Intercept)']
-
-  time.in<-eval(atts$call$t)
-  tot.days<-as.numeric(difftime(time.in[length(time.in)],time.in[1],units='days',
-    tz=attr(time.in,'tzone')))
-  in.vals<-seq(0,tot.days*2*pi*(1/f.val),length=length(time.in))
-
-  out.nop<-int.val+a.val*sin(in.vals)
-
-  #phase shift determined from lag with max positive corr
-  #couldn't figure out phase value from 'tidem' object....
-  p.shift<-ccf(predict(tide.mod),out.nop,plot=F,na.action=na.pass,lag=600)
-  p.shift<-p.shift$lag[which.max(p.shift$acf)]
-  p.shift<-(1/f.val)*2*pi*p.shift*30/60/24
-  
-  out<-a.val*cos(in.vals - p.shift)
-  
-  return(out)
   
   }
 
@@ -515,7 +213,7 @@ poly.fun<-function(flag.in,dat, fill.val='yellow1'){
   if(class(flag.in) == 'factor'){
     
     plo.dates<-unique(dat[,c('solar','value')])
-  
+    
     if(plo.dates$solar[1] == 'sunset') 
       plo.dates<-plo.dates[-1,]
     if(plo.dates$solar[nrow(plo.dates)] == 'sunrise')
@@ -526,14 +224,18 @@ poly.fun<-function(flag.in,dat, fill.val='yellow1'){
     
     plo.dates$inds<-rep(1:(nrow(plo.dates)/2),each=2)
     tz<-attr(plo.dates$value,'tzone')
+    plo.dates$value <- as.character(plo.dates$value)
     plo.dates<-dcast(plo.dates,inds~solar,value.var='value')
     plo.dates<-with(plo.dates,
       data.frame(sunrise,sunset,sunset,sunrise)
       )
    
-    x.vals<-suppressMessages(melt(sapply(1:nrow(plo.dates), 
-      function(x) plo.dates[x,],simplify=F))$value)
-    x.vals<-as.POSIXct(x.vals,tz,'1970-01-01')
+    x.vals <- sapply(1:nrow(plo.dates), 
+           function(x) plo.dates[x,],simplify=F)
+    x.vals<-suppressMessages(
+      melt(x.vals, measure.vars = names(x.vals[[1]]))$value
+      )
+    x.vals<-as.POSIXct(x.vals, tz, origin = '1970-01-01')
     y.vals<-rep(c(-1000,-1000,1000,1000),nrow(plo.dates))
     Day<-as.character(trunc(x.vals,'days'))
     polys<-data.frame(x.vals,y.vals,grp=Day)
@@ -570,7 +272,6 @@ dec_fun <- function(dat_in, var_nm = 'DateTimeStamp'){
   return(out)
   
   }
-
 
 ######
 #function for getting regression weights
@@ -745,165 +446,6 @@ wt_fun <- function(ref_in, dat_in,
   }
 
 ######
-# this is a repliate of filled.contour that removes category borders in the legend
-# http://stackoverflow.com/questions/8068366/removing-lines-within-filled-contour-legend
-filled.contour.hack <- function (x = seq(0, 1, length.out = nrow(z)), y = seq(0, 1, 
-    length.out = ncol(z)), z, xlim = range(x, finite = TRUE), 
-    ylim = range(y, finite = TRUE), zlim = range(z, finite = TRUE), 
-    levels = pretty(zlim, nlevels), nlevels = 20, color.palette = cm.colors, 
-    col = color.palette(length(levels) - 1), plot.title, plot.axes, 
-    key.title, key.axes, asp = NA, xaxs = "i", yaxs = "i", las = 1, 
-    axes = TRUE, frame.plot = axes, ...) 
-{
-    if (missing(z)) {
-        if (!missing(x)) {
-            if (is.list(x)) {
-                z <- x$z
-                y <- x$y
-                x <- x$x
-            }
-            else {
-                z <- x
-                x <- seq.int(0, 1, length.out = nrow(z))
-            }
-        }
-        else stop("no 'z' matrix specified")
-    }
-    else if (is.list(x)) {
-        y <- x$y
-        x <- x$x
-    }
-    if (any(diff(x) <= 0) || any(diff(y) <= 0)) 
-        stop("increasing 'x' and 'y' values expected")
-    mar.orig <- (par.orig <- par(c("mar", "las", "mfrow")))$mar
-    on.exit(par(par.orig))
-    w <- (3 + mar.orig[2L]) * par("csi") * 2.54
-    layout(matrix(c(2, 1), ncol = 2L), widths = c(1, lcm(w)))
-    par(las = las)
-    mar <- mar.orig
-    mar[4L] <- mar[2L]
-    mar[2L] <- 1
-    par(mar = mar)
-    plot.new()
-    plot.window(xlim = c(0, 1), ylim = range(levels), xaxs = "i", 
-        yaxs = "i")
-    rect(0, levels[-length(levels)], 1, levels[-1L], col = col, border = NA)
-    if (missing(key.axes)) {
-        if (axes) 
-            axis(4)
-    }
-    else key.axes
-    box()
-    if (!missing(key.title)) 
-        key.title
-    mar <- mar.orig
-    mar[4L] <- 1
-    par(mar = mar)
-    plot.new()
-    plot.window(xlim, ylim, "", xaxs = xaxs, yaxs = yaxs, asp = asp)
-    .filled.contour(x, y, z, levels, col)
-    if (missing(plot.axes)) {
-        if (axes) {
-            title(main = "", xlab = "", ylab = "")
-            Axis(x, side = 1)
-            Axis(y, side = 2)
-        }
-    }
-    else plot.axes
-    if (frame.plot) 
-        box()
-    if (missing(plot.title)) 
-        title(...)
-    else plot.title
-    invisible()
-  }
-
-######
-# interpolation grid for weighted regression
-# 'dat_in' is data.frame to interpolate, must contain dTide, dec_time, DO_obs, DateTimeStamp
-# 'dtide_div' is number of values to interp for grid
-# 'wins' is list of values for windows to determine weights
-interp_grd <- function(dat_in, tide_div = 10,
-  wins = list(2, 0.5, NULL), parallel = F){
-  
-  require(plyr)
-  
-  # assign to local env for ddply
-  tide_div <- tide_div
-  
-  # setup range of tidal vals to predict for grid
-  tide.grid<-seq(min(dat_in$Tide), max(dat_in$Tide), length = tide_div)
-
-  interp_out <- vector('list', length = nrow(dat_in))
-
-  out <- ddply(dat_in, 
-    .variable = 'DateTimeStamp',
-    .parallel = parallel,
-#     .paropts = list(.export = c('dtide_div', 'dtide.grid', 'dat_in', 
-#         'wins')),
-    .fun = function(row){
-    
-      # row for prediction
-      ref_in <- row
-      ref_in <- ref_in[rep(1, tide_div),]
-      ref_in$Tide <- tide.grid
-      
-      # get wts
-      ref_wts <- wt_fun(ref_in, dat_in, wins = wins)
-  
-      #OLS wtd model
-      out <- sapply(1:ncol(ref_wts),
-        function(x){
-          
-          # subset data for weights > 0
-          grzero <- ref_wts[, x] > 0 
-          dat_in <- dat_in[grzero, ]
-          
-          # subset weigths > 0, rescale weights average
-          ref_wts <- ref_wts[grzero, x]
-          ref_wts <- ref_wts/mean(ref_wts)
-          
-          # get model
-          mod_md <- lm(
-            DO_obs ~ dec_time + Tide + sin(2*pi*dec_time) + cos(2*pi*dec_time),
-            weights = ref_wts,
-            data = dat_in
-            )
-          
-          # get prediction from model
-          Tide <- ref_in$Tide[x]
-          DO_prd <- predict(
-            mod_md, 
-            newdata = data.frame(dec_time = ref_in$dec_time[x], Tide = Tide)
-            )
-          
-          # get beta from model
-          beta <- mod_md$coefficients['Tide']
-          
-          # output
-          data.frame(DO_prd, beta, Tide)
-          
-          }
-        
-        )
-      
-      out <- t(out)
-      out <- data.frame(out) #, row = row)
-      
-      out
-    
-      })
-  
-  # convert list vectors to numeic
-  out$DO_prd <- as.numeric(out$DO_prd)
-  out$beta <- as.numeric(out$beta)
-  out$Tide <- as.numeric(out$Tide)
-  
-  return(out)
-  
-  }
-
-######
 # creates data for DO simulation, uses functions above
 # 'time_in' is POSIX vector of continuous time series to estimate, currently as 30 minute obs
 # 'do.amp' is amplitude of biological DO signal
@@ -960,7 +502,7 @@ ts_create <- function(time_in, do.amp, tide_cat, tide_assoc, err_rng_obs,
   # get tide if supplied as data.frame, first col is posix, second is tide
   if(class(tide_cat) == 'data.frame'){
     tide <- tide_cat
-    tide$Tide <- rescale(tide$Tide, to = c(4, 5))
+    tide$Tide <- scales::rescale(tide$Tide, to = c(4, 5))
     }
   
   # combine with data frame and add dtide/dt
@@ -973,7 +515,7 @@ ts_create <- function(time_in, do.amp, tide_cat, tide_assoc, err_rng_obs,
   if(seeded) set.seed(1234)
   DO_sim$e_obs <- rnorm(nrow(DO_sim), 0, err_rng_obs)
   if(seeded) set.seed(4321)
-  DO_sim$e_pro <- rescale(cumsum(rnorm(nrow(DO_sim), 0, err_rng_pro)), 
+  DO_sim$e_pro <- scales::rescale(cumsum(rnorm(nrow(DO_sim), 0, err_rng_pro)), 
     to = c(-1 * err_rng_pro, err_rng_pro))
   DO_sim$e_tot <- with(DO_sim, e_obs + e_pro)
 
@@ -982,7 +524,7 @@ ts_create <- function(time_in, do.amp, tide_cat, tide_assoc, err_rng_obs,
   DO_sim$DO_bio <- pmax(0, with(DO_sim, DO_bio + e_tot))
 
   # add tidal effect
-  DO_sim$DO_adv <- rescale(DO_sim$Tide, to = c(-1*tide_assoc, tide_assoc))
+  DO_sim$DO_adv <- scales::rescale(DO_sim$Tide, to = c(-1*tide_assoc, tide_assoc))
   DO_sim$DO_obs <- with(DO_sim, DO_bio + DO_adv)
 
   # floor at zero
@@ -1089,47 +631,6 @@ wtreg_fun <- function(dat_in, DO_obs = 'DO_obs', wins = list(4, 12, NULL),
   out <- cbind(dat_in, out)
 
   return(out)
-  
-  }
-
-######
-# get predicted, normalized values from interp grid and obs data, tide as predictor
-# 'grd_in' is interpolation grid in from 'interp_grd' function
-# 'dat_in' is raw data used to create 'grd_in' and used to get predictions
-# 'DO_obs' is string indicating name of col for observed DO values from 'dat_in'
-# output is data frame same as 'dat_in' but includes predicted and norm columns
-prdnrm_fun <- function(grd_in, dat_in, DO_obs = 'DO_obs'){
-  
-  require(data.table)
-  
-  # merge int grd with obs data
-  DO_mrg <- merge(grd_in, dat_in[, c('DateTimeStamp', DO_obs, 'Tide')],
-    by = 'DateTimeStamp')
-
-  # convert merged data to data table, key is DateTimeStamp
-  DO_tab <- data.table(DO_mrg, key = 'DateTimeStamp')
-
-  # get predicted DO from table
-  DO_prd <- DO_tab[, DO_prd[which.min(abs(Tide.x - Tide.y))], 
-    key = 'DateTimeStamp']
-
-#   # get normalized values by averaging
-#   # note that this differs from hirsch method for interp
-#   # assumes all dtide values are equally likely for a given obs
-#   DO_nrm <- DO_tab[, mean(DO_prd), key = 'DateTimeStamp']
-
-  # get normalized values, predicted tide at mean tidal height for each obs
-  mean_tide <- mean(dat_in$Tide)
-  mean_tide <- unique(DO_tab$Tide.x)[which.min(abs(mean_tide - unique(DO_tab$Tide.x)))]
-  DO_nrm <- DO_tab[, DO_prd[Tide.x == mean_tide], key = 'DateTimeStamp']
-
-  # add predicted to 'dat_in'
-  dat_in$DO_prd <- DO_prd$V1
-   
-  # add normalized to 'dat_in', note that DO_obs is a chr object
-  dat_in$DO_nrm <- DO_nrm$V1 # + dat_in[, DO_obs] - dat_in[, 'DO_prd']  
-  
-  return(dat_in)
   
   }
 
