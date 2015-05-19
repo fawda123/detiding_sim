@@ -1,0 +1,41 @@
+commit 8fd95167d0105151c12b16510ea602a3966d4c71
+Author: fawda123 <mbafs2012@gmail.com>
+Date:   Thu Aug 14 14:44:36 2014 -0500
+
+    removed several nonsessential functions, added script for summarizing model performance in source_me.r
+
+commit aaf183e46ca2ca2f452d4c0f810e44e8cd20209d
+Author: fawda123 <mbafs2012@gmail.com>
+Date:   Tue Aug 12 09:16:06 2014 -0500
+
+    re-analysis of sims after detiding worked with cases
+
+commit 98cbc3980c01151f60e9fe2fab9b6c52dde97fe7
+Author: fawda123 <mbafs2012@gmail.com>
+Date:   Mon Aug 11 16:31:55 2014 -0500
+
+    fixed wt_fun, did not include tide
+
+commit 121bb6524f4098d149e119a6b3f87de324a2c53a
+Author: fawda123 <mbafs2012@gmail.com>
+Date:   Fri Aug 8 16:33:12 2014 -0500
+
+    simulations using detiding approach that works well for case studies
+
+commit 82a5bdde1520b443242a2db538ed7c9034a26551
+Author: fawda123 <mbeck@D2626XMBECK3.aa.ad.epa.gov>
+Date:   Sun Jul 6 14:38:22 2014 -0500
+
+    revamp of weighted regression windows, only one for dec_time
+
+commit 2a9b980f602e6da0965ebf0cf08e9d7f38cf8c6d
+Author: fawda123 <mbeck@D2626XMBECK3.aa.ad.epa.gov>
+Date:   Mon Jun 23 18:07:32 2014 -0500
+
+    new sims, DO bio includes error as 'actual', models use tide as predictor, detided data includes residuals
+
+commit 17c9716f54b195eb05a259a1431cab752c757d95
+Author: fawda123 <mbeck@D2626XMBECK3.aa.ad.epa.gov>
+Date:   Thu Jun 19 14:37:45 2014 -0500
+
+    first commit

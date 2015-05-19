@@ -21,7 +21,7 @@ setwd('M:/docs/SWMP/detiding_sim/')
 source('sim_funs.r')
 
 # grid of simulation conditions to evaluate
-tide_cat <- c('Diurnal', 'Semidiurnal', 'Mixed Semidiurnal')
+tide_cat <- c('Semidiurnal')
 tide_cat <- factor(tide_cat, levels = tide_cat)
 bio_rng <- round(seq(0, 2, length = 3),2)
 tide_assoc <- round(seq(0, 2, length = 3), 2)
@@ -35,8 +35,8 @@ names(eval_grd) <- c('tide_cat', 'bio_rng', 'tide_assoc', 'err_rng_pro',
 save(eval_grd, file = 'eval_grd.RData')
 
 # grid of regression windows to evaluate
-dy_wins <- c(1, 3, 8)
-hr_wins <- c(6, 12, 24)
+dy_wins <- c(1, 3, 6)
+hr_wins <- c(1, 3, 6)
 td_wins <- c(0.25, 0.5, 1)
 wins_grd <- expand.grid(dy_wins, hr_wins, td_wins)
 names(wins_grd) <- c('dec_time', 'hour', 'Tide')
