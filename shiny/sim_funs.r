@@ -492,19 +492,19 @@ ts_create <- function(time_in, do.amp, tide_cat, tide_assoc, err_rng_obs,
     if(tide_cat == 'Mixed Semidiurnal')
       waves.in <- list(c(12.42, 1), c(25.82, 1)) 
     
-    tide <- tide.fun(vec, waves.in)
+    tide <- tide.fun(time_in, waves.in)
     }
 
   # get tide if list
   if(class(tide_cat) == 'list')
-    tide <- tide.fun(vec, waves.in)
+    tide <- tide.fun(time_in, waves.in)
   
   # get tide if supplied as data.frame, first col is posix, second is tide
   if(class(tide_cat) == 'data.frame'){
     tide <- tide_cat
     tide$Tide <- scales::rescale(tide$Tide, to = c(4, 5))
     }
-  
+
   # combine with data frame and add dtide/dt
   DO_sim$Tide <- tide$Tide
   
